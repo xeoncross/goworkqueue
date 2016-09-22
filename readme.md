@@ -10,11 +10,13 @@ Super simple job queue with managed workers. No locking mutexes, only channel co
 
 Create a new queue instance with a callback for each job you want run.
 
-      queue := goworkqueue.Queue{}
-      queue.Init(1000, 5, func(job string, workerId int) {
-        fmt.Println(job, workerId)
-      })
-      queue.Run() // Blocks until queue.Close() is called
+    queue := goworkqueue.Queue{}
+    queue.Init(1000, 5, func(job string, workerId int) {
+      fmt.Println("processing", job)
+      queue.Close()
+    })
+    queue.Jobs <- "one" // anything can add "jobs" to process
+    queue.Run() // Blocks until queue.Close() is called
 
 See the example/example.go for more information.
 
