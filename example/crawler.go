@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"golang.org/x/net/html"
 	"net/http"
-  "net/url"
+	"net/url"
 	"os"
-  "os/signal"
+	"os/signal"
 	"strings"
-  "github.com/xeoncross/goworkqueue"
+
+	"github.com/xeoncross/goworkqueue"
+	"golang.org/x/net/html"
 )
 
 /*
@@ -27,47 +28,46 @@ var foundUrls map[string]bool
 var queue goworkqueue.Queue
 
 func main() {
-  	foundUrls = make(map[string]bool)
-  	seedUrls := os.Args[1:]
+	foundUrls = make(map[string]bool)
+	seedUrls := os.Args[1:]
 
-    jobQueueSize := 1000
-    numberOfWorkers := 3
+	jobQueueSize := 1000
+	numberOfWorkers := 3
 
-    queue = goworkqueue.Queue{}
-    queue.Init(jobQueueSize, numberOfWorkers, crawlWorker)
+	queue = goworkqueue.Queue{}
+	queue.Init(jobQueueSize, numberOfWorkers, crawlWorker)
 
-    // Abort when we press CTRL+C
-    c := make(chan os.Signal, 1)
-    signal.Notify(c, os.Interrupt)
-    go func(){
-        for _ = range c {
-            queue.Close()
-            fmt.Println("ABORT!")
-        }
-    }()
+	// Abort when we press CTRL+C
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for _ = range c {
+			queue.Close()
+			fmt.Println("ABORT!")
+		}
+	}()
 
-    // Add our urls to the job list
-    for _, url := range seedUrls {
-      queue.Jobs <- url
-    }
+	// Add our urls to the job list
+	for _, url := range seedUrls {
+		queue.Jobs <- url
+	}
 
-    // Blocks until queue.Close()
-    queue.Run()
+	// Blocks until queue.Close()
+	queue.Run()
 
-    // Optional, callback for emptying the queue *if* anything remains
-    queue.Drain(func(job string) {
-      fmt.Printf("'%s' wasn't fetched\n", job)
-    })
+	// Optional, callback for emptying the queue *if* anything remains
+	queue.Drain(func(job string) {
+		fmt.Printf("'%s' wasn't fetched\n", job)
+	})
 
-  	// We're done! Print the results...
-  	fmt.Println("\nFound", len(foundUrls), "unique urls:\n")
+	// We're done! Print the results...
+	fmt.Println("\nFound", len(foundUrls), "unique urls:\n")
 
-  	for url, _ := range foundUrls {
-  		fmt.Println(" - " + url)
-  	}
+	for url := range foundUrls {
+		fmt.Println(" - " + url)
+	}
 
 }
-
 
 // Helper function to pull the href attribute from a Token
 func getHref(t html.Token) (ok bool, href string) {
@@ -87,7 +87,7 @@ func getHref(t html.Token) (ok bool, href string) {
 // Extract all http** links from a given webpage
 func crawlWorker(url string, workerId int) {
 
-  fmt.Println("fetching", url)
+	fmt.Println("fetching", url)
 	resp, err := http.Get(url)
 
 	if err != nil {
@@ -122,19 +122,19 @@ func crawlWorker(url string, workerId int) {
 				continue
 			}
 
-      // fmt.Println("URL:", url)
-      url = toAbsUrl(resp.Request.URL, url)
-      // fmt.Println("ABS URL:", url)
+			// fmt.Println("URL:", url)
+			url = toAbsUrl(resp.Request.URL, url)
+			// fmt.Println("ABS URL:", url)
 
-      if _, ok := foundUrls[url]; ok {
-        fmt.Println("NO", url)
-        return
-      }
+			if _, ok := foundUrls[url]; ok {
+				fmt.Println("NO", url)
+				return
+			}
 
 			// Make sure the url begines in http**
 			hasProto := strings.Index(url, "http") == 0
 			if hasProto {
-        foundUrls[url] = true
+				foundUrls[url] = true
 				queue.Jobs <- url
 			}
 		}
