@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
+	"github.com/patrickmn/go-cache"
 	"github.com/xeoncross/goworkqueue"
 	"golang.org/x/net/html"
 )
@@ -19,16 +21,19 @@ import (
  * Run:
  *  $ go run crawler.go https://httpbin.org/links/5
  *
- * Todo:
- *  1) Make foundUrls a concurrent-safe map
- *  2) Add https://github.com/patrickmn/go-cache to keep a domain rate-limit list
+ * @todo: Make foundUrls a concurrent-safe map
  */
 
-var foundUrls map[string]bool
+var foundUrls = make(map[string]bool)
+var foundDomains = make(map[string]bool)
 var queue goworkqueue.Queue
+var domainBackoff *cache.Cache
 
 func main() {
-	foundUrls = make(map[string]bool)
+
+	// We want to only hit the same domain at *most* every X minutes
+	domainBackoff = cache.New(1*time.Second, 2*time.Second)
+	// foundUrls = make(map[string]bool)
 	seedUrls := os.Args[1:]
 
 	jobQueueSize := 1000
@@ -61,9 +66,13 @@ func main() {
 	})
 
 	// We're done! Print the results...
-	fmt.Println("\nFound", len(foundUrls), "unique urls:\n")
-
+	fmt.Println("\nFound", len(foundUrls), "unique urls:")
 	for url := range foundUrls {
+		fmt.Println(" - " + url)
+	}
+
+	fmt.Println("\nFound", len(foundDomains), "unique domains:")
+	for url := range foundDomains {
 		fmt.Println(" - " + url)
 	}
 
@@ -85,7 +94,19 @@ func getHref(t html.Token) (ok bool, href string) {
 }
 
 // Extract all http** links from a given webpage
-func crawlWorker(url string, workerId int) {
+func crawlWorker(url string, workerID int) {
+
+	domain := domainOfURL(url)
+
+	// Too soon
+	if _, found := domainBackoff.Get(domain); found {
+		// fmt.Println("WAIT:", domain, "->", url)
+		queue.Jobs <- url
+		return
+	}
+
+	// Set the value of the key "foo" to "bar", with the default expiration time
+	domainBackoff.Set(domain, true, cache.DefaultExpiration)
 
 	fmt.Println("fetching", url)
 	resp, err := http.Get(url)
@@ -122,18 +143,18 @@ func crawlWorker(url string, workerId int) {
 				continue
 			}
 
-			// fmt.Println("URL:", url)
-			url = toAbsUrl(resp.Request.URL, url)
-			// fmt.Println("ABS URL:", url)
+			url = toAbsURL(resp.Request.URL, url)
 
 			if _, ok := foundUrls[url]; ok {
-				fmt.Println("NO", url)
+				fmt.Println("ALREADY PARSED:", url)
 				return
 			}
 
 			// Make sure the url begines in http**
 			hasProto := strings.Index(url, "http") == 0
 			if hasProto {
+				domain := domainOfURL(url)
+				foundDomains[domain] = true
 				foundUrls[url] = true
 				queue.Jobs <- url
 			}
@@ -141,11 +162,19 @@ func crawlWorker(url string, workerId int) {
 	}
 }
 
-func toAbsUrl(baseurl *url.URL, weburl string) string {
+func toAbsURL(baseurl *url.URL, weburl string) string {
 	relurl, err := url.Parse(weburl)
 	if err != nil {
 		return ""
 	}
 	absurl := baseurl.ResolveReference(relurl)
 	return absurl.String()
+}
+
+func domainOfURL(weburl string) string {
+	parsedURL, err := url.Parse(weburl)
+	if err != nil {
+		return ""
+	}
+	return parsedURL.Host
 }
