@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/patrickmn/go-cache"
@@ -26,7 +28,7 @@ import (
 
 var foundUrls = make(map[string]bool)
 var foundDomains = make(map[string]bool)
-var queue goworkqueue.Queue
+var queue *goworkqueue.Queue
 var domainBackoff *cache.Cache
 
 func main() {
@@ -39,16 +41,15 @@ func main() {
 	jobQueueSize := 1000
 	numberOfWorkers := 3
 
-	queue = goworkqueue.Queue{}
-	queue.Init(jobQueueSize, numberOfWorkers, crawlWorker)
+	queue = goworkqueue.NewQueue(jobQueueSize, numberOfWorkers, crawlWorker)
 
-	// Abort when we press CTRL+C
+	// Abort when we press CTRL+C (go run...) or send a kill -9 (go build...)
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for _ = range c {
 			queue.Close()
-			fmt.Println("ABORT!")
+			fmt.Println("ABORTING!")
 		}
 	}()
 
@@ -61,8 +62,8 @@ func main() {
 	queue.Run()
 
 	// Optional, callback for emptying the queue *if* anything remains
-	queue.Drain(func(job string) {
-		fmt.Printf("'%s' wasn't fetched\n", job)
+	queue.Drain(func(job interface{}) {
+		fmt.Printf("'%v' wasn't fetched\n", job)
 	})
 
 	// We're done! Print the results...
@@ -94,25 +95,34 @@ func getHref(t html.Token) (ok bool, href string) {
 }
 
 // Extract all http** links from a given webpage
-func crawlWorker(url string, workerID int) {
+func crawlWorker(job interface{}, workerID int) {
 
-	domain := domainOfURL(url)
+	var urlString string
+
+	switch v := job.(type) {
+	case string:
+		urlString = v
+	default:
+		log.Fatal("Unknown job: ", v)
+	}
+
+	domain := domainOfURL(urlString)
 
 	// Too soon
 	if _, found := domainBackoff.Get(domain); found {
 		// fmt.Println("WAIT:", domain, "->", url)
-		queue.Jobs <- url
+		queue.Jobs <- urlString
 		return
 	}
 
 	// Set the value of the key "foo" to "bar", with the default expiration time
 	domainBackoff.Set(domain, true, cache.DefaultExpiration)
 
-	fmt.Println("fetching", url)
-	resp, err := http.Get(url)
+	fmt.Println("fetching", urlString)
+	resp, err := http.Get(urlString)
 
 	if err != nil {
-		fmt.Println("ERROR: Failed to crawl \"" + url + "\"")
+		fmt.Println("ERROR: Failed to crawl \"" + urlString + "\"")
 		return
 	}
 
@@ -138,25 +148,25 @@ func crawlWorker(url string, workerID int) {
 			}
 
 			// Extract the href value, if there is one
-			ok, url := getHref(t)
+			ok, urlString := getHref(t)
 			if !ok {
 				continue
 			}
 
-			url = toAbsURL(resp.Request.URL, url)
+			urlString = toAbsURL(resp.Request.URL, urlString)
 
-			if _, ok := foundUrls[url]; ok {
-				fmt.Println("ALREADY PARSED:", url)
+			if _, ok := foundUrls[urlString]; ok {
+				fmt.Println("ALREADY PARSED:", urlString)
 				return
 			}
 
 			// Make sure the url begines in http**
-			hasProto := strings.Index(url, "http") == 0
+			hasProto := strings.Index(urlString, "http") == 0
 			if hasProto {
-				domain := domainOfURL(url)
+				domain := domainOfURL(urlString)
 				foundDomains[domain] = true
-				foundUrls[url] = true
-				queue.Jobs <- url
+				foundUrls[urlString] = true
+				queue.Jobs <- urlString
 			}
 		}
 	}
