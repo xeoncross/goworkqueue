@@ -1,6 +1,6 @@
 # GoWorkQueue
 
-Super simple job queue with managed workers. No locking mutexes, only channel communication. Perfect for jobs like crawling websites.
+Super simple single-node job queue with managed workers. No locking mutexes, only channel communication. Perfect for small jobs like digesting streams or simple crawl jobs.
 
 ## Install
 
@@ -10,10 +10,8 @@ Super simple job queue with managed workers. No locking mutexes, only channel co
 
 Create a new queue instance with a callback for each job you want run.
 
-    queue := goworkqueue.Queue{}
-    queue.Init(1000, 5, func(job string, workerId int) {
+    queue := goworkqueue.NewQueue(1000, 5, func(job interface{}, workerID int) {
       fmt.Println("processing", job)
-      queue.Close()
     })
     queue.Jobs <- "one" // anything can add "jobs" to process
     queue.Run() // Blocks until queue.Close() is called
