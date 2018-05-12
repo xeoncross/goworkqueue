@@ -11,10 +11,10 @@ Super simple single-node job queue with managed workers. Perfect for small jobs 
 Create a new queue instance with a callback for each job you want run.
 
     queue := goworkqueue.NewQueue(1000, 5, func(job interface{}, workerID int) {
-      fmt.Println("processing", job)
+      fmt.Println("Processing", job)
     })
-    queue.Jobs <- "one" // anything can add "jobs" to process
-    queue.Run() // Blocks until queue.Close() is called
+    queue.Add("one")  // anything can add "jobs" to process
+    queue.Run()       // Blocks until queue.Close() is called
 
 See the example/example.go for more information.
 
