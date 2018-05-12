@@ -21,7 +21,7 @@ import (
  * Based on https://schier.co/blog/2015/04/26/a-simple-web-scraper-in-go.html
  *
  * Run:
- *  $ go run crawler.go https://httpbin.org/links/5
+ *  $ go run -race crawler.go https://httpbin.org/links/5
  *
  * @todo: Make foundUrls a concurrent-safe map
  */
@@ -55,7 +55,7 @@ func main() {
 
 	// Add our urls to the job list
 	for _, url := range seedUrls {
-		queue.Jobs <- url
+		queue.Add(url)
 	}
 
 	// Blocks until queue.Close()
@@ -111,7 +111,7 @@ func crawlWorker(job interface{}, workerID int) {
 	// Too soon
 	if _, found := domainBackoff.Get(domain); found {
 		// fmt.Println("WAIT:", domain, "->", url)
-		queue.Jobs <- urlString
+		queue.Add(urlString)
 		return
 	}
 
@@ -166,7 +166,7 @@ func crawlWorker(job interface{}, workerID int) {
 				domain := domainOfURL(urlString)
 				foundDomains[domain] = true
 				foundUrls[urlString] = true
-				queue.Jobs <- urlString
+				queue.Add(urlString)
 			}
 		}
 	}

@@ -48,11 +48,10 @@ func main() {
 			// Here you could fetch data from a queue or database
 			id++
 
-			if queue.Closed() {
+			// If we can't add a job, the queue must be closed/closing
+			if ok := queue.Add(id); !ok {
 				return
 			}
-
-			queue.Jobs <- id
 		}
 
 	}()

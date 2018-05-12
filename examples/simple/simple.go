@@ -48,7 +48,9 @@ func main() {
 
 	// We can optionally prefill the work queue
 	for j := 1; j <= 20; j++ {
-		queue.Jobs <- fmt.Sprintf("Job %d", j)
+		if ok := queue.Add(fmt.Sprintf("Job %d", j)); !ok {
+			break
+		}
 	}
 
 	// Blocks until queue.Close()
