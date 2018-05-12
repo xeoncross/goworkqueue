@@ -7,6 +7,11 @@ import (
 	"github.com/xeoncross/goworkqueue"
 )
 
+/*
+ * Simple example of creating a work queue that gracefully handles shutdowns
+ * or failure
+ */
+
 // A real worker would be parsing a web page or crunching numbers
 func workerFunc(job interface{}, workerID int) {
 
