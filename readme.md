@@ -1,6 +1,6 @@
 # GoWorkQueue
 
-Super simple single-node job queue with managed workers. No locking mutexes, only channel communication. Perfect for small jobs like digesting streams or simple crawl jobs.
+Super simple single-node job queue with managed workers. Perfect for small jobs like digesting streams or simple crawl jobs.
 
 ## Install
 
