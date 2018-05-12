@@ -2,6 +2,8 @@
 
 Super simple single-node job queue with managed workers. Perfect for small jobs like digesting streams or simple crawl jobs.
 
+No race conditions and has a graceful shutdown.
+
 ## Install
 
     go get github.com/xeoncross/goworkqueue
