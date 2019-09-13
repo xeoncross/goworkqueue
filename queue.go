@@ -7,10 +7,10 @@ import (
 
 // Queue struct
 type Queue struct {
-	Jobs    chan interface{}
+	jobs    chan interface{}
 	done    chan bool
 	workers chan chan int
-	mux     sync.Mutex
+	once    sync.Once
 }
 
 // NewQueue work queue
@@ -18,7 +18,7 @@ func NewQueue(size int, workers int, callback func(interface{}, int)) (q *Queue)
 
 	q = &Queue{}
 
-	q.Jobs = make(chan interface{}, size)
+	q.jobs = make(chan interface{}, size)
 	q.done = make(chan bool)
 	q.workers = make(chan chan int, workers)
 
@@ -39,12 +39,11 @@ func (q *Queue) worker(id int, callback func(interface{}, int)) (done chan int) 
 			select {
 			case <-q.done:
 				break work
-			case j := <-q.Jobs:
+			case j := <-q.jobs:
 				callback(j, id)
 			}
 		}
 
-		done <- id
 		close(done)
 	}()
 
@@ -54,34 +53,37 @@ func (q *Queue) worker(id int, callback func(interface{}, int)) (done chan int) 
 // Run blocks until the queue is closed
 func (q *Queue) Run() {
 
-	// Wait for workers to be halted
+	// Wait for all workers to be halted
 	for w := range q.workers {
 		<-w
 	}
 
-	// Nothing should still be mindlessly adding jobs
-	close(q.Jobs)
+	// TODO?
+	// There seems to be a theoretical chance of a race condition by Add()
+	// checking q.done before Close() is called and then trying to send on q.jobs
+	// *after* Close() has been called. By closing q.jobs here, instead of in
+	// Close(), we avoid this(?) because between these two events all the workers
+	// have to stop working which is a much greater timespan then the time
+	// between checking q.done and sending on q.jobs
+	close(q.jobs)
 }
 
 // Drain queue of jobs
 func (q *Queue) Drain(callback func(interface{})) {
-	for j := range q.Jobs {
+	for j := range q.jobs {
 		callback(j)
 	}
 }
 
 // Close the work queue
 func (q *Queue) Close() {
-	q.mux.Lock()
-	close(q.done)
-	q.mux.Unlock()
+	q.once.Do(func() {
+		close(q.done)
+	})
 }
 
 // Closed reports if this queue is already closed
 func (q *Queue) Closed() bool {
-	q.mux.Lock()
-	defer q.mux.Unlock()
-
 	select {
 	case <-q.done:
 		return true
@@ -91,16 +93,20 @@ func (q *Queue) Closed() bool {
 }
 
 // Add jobs to the queue as long as it hasn't be closed
-func (q *Queue) Add(job interface{}) (ok bool) {
-	q.mux.Lock()
+func (q *Queue) Add(job interface{}) bool {
+	// Check the queue is open first
 	select {
 	case <-q.done:
-		ok = false
-	case q.Jobs <- job:
-		ok = true
+		return false
+	default:
+		// While the jobs queue send is blocking, we might shutdown the queue
+		select {
+		case q.jobs <- job:
+			return true
+		case <-q.done:
+			return false
+		}
 	}
-	q.mux.Unlock()
-	return
 }
 
 // SleepUntilTimeOrChanActivity (whichever comes first)
